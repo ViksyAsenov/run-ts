@@ -1,0 +1,31 @@
+{
+  "name": "run-ts",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "api",
+    "worker"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=api",
+    "dev:web": "npm run dev --workspace=web",
+    "dev:worker": "npm run dev --workspace=worker",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "nodemon": "^3.1.14",
+    "prettier": "^3.9.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0"
+  },
+  "dependencies": {
+    "pino": "^10.3.1",
+    "zod": "^4.6.1"
+  }
+}

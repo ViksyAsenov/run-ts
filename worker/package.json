@@ -1,0 +1,17 @@
+{
+  "name": "worker",
+  "version": "1.0.0",
+  "main": "build/src/index.js",
+  "scripts": {
+    "format": "prettier --write .",
+    "lint": "eslint .",
+    "fix": "eslint --fix .",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "dev": "nodemon"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
