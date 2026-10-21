@@ -59,12 +59,12 @@ const init = async (amqpUrl = 'amqp://localhost:5672'): Promise<void> => {
   }
 };
 
-const publishJob = (jobId: string, payload: string): void => {
+const publishJob = (jobId: string, code: string): void => {
   if (!channel) {
     throw new AppError(500, 'RabbitMQ channel not initialized');
   }
 
-  channel.sendToQueue('execution_queue', Buffer.from(payload), {
+  channel.sendToQueue('execution_queue', Buffer.from(code), {
     correlationId: jobId,
     persistent: true,
   });
