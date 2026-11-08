@@ -1,6 +1,6 @@
+import logger from '@shared/config/logger';
 import {randomUUID} from 'crypto';
 
-import logger from '../config/logger';
 import RabbitMQService from './rabbitmq.service';
 
 const submitJob = (code: string): string => {

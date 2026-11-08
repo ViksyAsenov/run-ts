@@ -1,9 +1,9 @@
+import logger from '@shared/config/logger';
 import {type Application} from 'express';
 import {type Server as HttpServer} from 'http';
 import {Server} from 'socket.io';
 
 import SocketService from '../services/socket.service';
-import logger from './logger';
 
 const setupWS = (server: HttpServer, app: Application): void => {
   const io = new Server(server);

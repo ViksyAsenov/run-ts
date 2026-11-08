@@ -1,3 +1,4 @@
+import logger from '@shared/config/logger';
 import {type Channel, type ConsumeMessage} from 'amqplib';
 import {exec, spawn} from 'child_process';
 import {unlink, writeFile} from 'fs/promises';
@@ -5,11 +6,10 @@ import os from 'os';
 import path from 'path';
 import {promisify} from 'util';
 
-import logger from './config/logger';
+import {activeProcesses} from '.';
+import isString from './utils/isString';
 
 const execAsync = promisify(exec);
-
-const isString = (value: unknown): value is string => typeof value === 'string';
 
 const processJob = async (
   channel: Channel,
@@ -51,7 +51,7 @@ const processJob = async (
       killSignal: 'SIGKILL',
     });
 
-    // activeProcesses.set(jobId, child);
+    activeProcesses.set(jobId, child);
 
     child.stdout.on('data', data => {
       if (Buffer.isBuffer(data)) {
@@ -111,7 +111,7 @@ const processJob = async (
       );
     }
   } finally {
-    // activeProcesses.delete(jobId);
+    activeProcesses.delete(jobId);
 
     await unlink(tsFilePath).catch(() => {
       /* empty */

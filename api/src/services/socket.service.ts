@@ -1,6 +1,6 @@
+import logger from '@shared/config/logger';
 import {type Server, type Socket} from 'socket.io';
 
-import logger from '../config/logger';
 import RabbitMQService from './rabbitmq.service';
 
 let io: Server | null = null;

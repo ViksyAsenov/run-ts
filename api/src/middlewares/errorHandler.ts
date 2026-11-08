@@ -1,6 +1,6 @@
+import logger from '@shared/config/logger';
 import {type NextFunction, type Request, type Response} from 'express';
 
-import logger from '../config/logger';
 import AppError from '../utils/error';
 import {sendError} from '../utils/response';
 
@@ -14,7 +14,7 @@ const errorHandler = (
     return sendError(res, error.message, error.statusCode);
   }
 
-  logger.error({error}, '[Unhandled Error]');
+  logger.error({error}, 'Unhandled Error');
 
   return sendError(res, 'Internal server error', 500);
 };

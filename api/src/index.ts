@@ -1,9 +1,9 @@
+import logger from '@shared/config/logger';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
 import {createServer} from 'http';
 
-import logger from './config/logger';
 import setupWS from './config/ws';
 import errorHandler from './middlewares/errorHandler';
 import router from './routes';

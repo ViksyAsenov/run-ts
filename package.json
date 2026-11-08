@@ -2,6 +2,7 @@
   "name": "run-ts",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
   "workspaces": [
     "api",
     "worker"

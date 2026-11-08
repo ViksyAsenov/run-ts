@@ -1,17 +1,16 @@
-import ampqplib, {type Channel, type ChannelModel} from 'amqplib';
+import logger from '@shared/config/logger';
+import type {ControlAction} from '@shared/types/rabbitmq';
+import amqplib, {type Channel, type ChannelModel} from 'amqplib';
 
-import logger from '../config/logger';
 import AppError from '../utils/error';
 import SocketService from './socket.service';
 
 let connection: ChannelModel | null = null;
 let channel: Channel | null = null;
 
-type ControlAction = 'stdin' | 'cancel';
-
 const init = async (amqpUrl = 'amqp://localhost:5672'): Promise<void> => {
   try {
-    connection = await ampqplib.connect(amqpUrl);
+    connection = await amqplib.connect(amqpUrl);
 
     channel = await connection.createChannel();
 
@@ -55,6 +54,7 @@ const init = async (amqpUrl = 'amqp://localhost:5672'): Promise<void> => {
     logger.info('Connected to RabbitMQ and set up Socket.IO bridge');
   } catch (error) {
     logger.error({error}, 'Failed to initialize RabbitMQ');
+
     process.exit(1);
   }
 };
