@@ -8,7 +8,8 @@
     "fix": "eslint --fix .",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "dev": "nodemon"
+    "dev": "nodemon",
+    "start": "tsx src/index.ts"
   },
   "keywords": [],
   "author": "",
@@ -16,5 +17,8 @@
   "description": "",
   "devDependencies": {
     "@types/node": "^26.6.3"
+  },
+  "dependencies": {
+    "typescript": "^7.0.2"
   }
 }

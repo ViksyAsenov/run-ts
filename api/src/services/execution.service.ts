@@ -2,11 +2,13 @@ import logger from '@shared/config/logger';
 import {randomUUID} from 'crypto';
 
 import RabbitMQService from './rabbitmq.service';
+import SocketService from './socket.service';
 
 const submitJob = (code: string): string => {
   const jobId = randomUUID();
 
   RabbitMQService.publishJob(jobId, code);
+  SocketService.emitJobStatus(jobId, 'submitted');
 
   logger.info(`Submitted job ${jobId} to RabbitMQ`);
 

@@ -1,86 +1,139 @@
+import 'dotenv/config';
+
 import logger from '@shared/config/logger';
 import {isControlAction} from '@shared/types/rabbitmq';
 import amqplib from 'amqplib';
-import {type ChildProcess} from 'child_process';
 
 import processJob from './executor';
+import activeProcesses from './state';
+import isString from './utils/isString';
 
-const activeProcesses = new Map<string, ChildProcess>();
-const amqpUrl = 'amqp://localhost:5672';
+const rabbitMqUser = process.env.RABBITMQ_DEFAULT_USER ?? '';
+const rabbitMqPass = process.env.RABBITMQ_DEFAULT_PASS ?? '';
+
+const amqpUrl =
+  rabbitMqUser && rabbitMqPass
+    ? `amqp://${rabbitMqUser}:${rabbitMqPass}@localhost:5672`
+    : 'amqp://localhost:5672';
 
 const startWorker = async (): Promise<void> => {
-  const connection = await amqplib.connect(amqpUrl);
+  try {
+    const connection = await amqplib.connect(amqpUrl);
+    logger.info('Connected to RabbitMQ');
 
-  const channel = await connection.createChannel();
+    connection.on('error', error => {
+      logger.error({error}, 'RabbitMQ connection error');
+    });
 
-  await channel.assertQueue('execution_queue', {durable: true});
+    connection.on('close', () => {
+      logger.error('RabbitMQ connection closed!');
+    });
 
-  await channel.assertExchange('execution_streams', 'topic', {
-    durable: false,
-  });
+    const channel = await connection.createChannel();
+    logger.info('RabbitMQ channel created');
 
-  const {queue} = await channel.assertQueue('', {exclusive: true});
+    await channel.assertQueue('execution_queue', {durable: true});
+    await channel.assertExchange('execution_streams', 'topic', {
+      durable: false,
+    });
+    await channel.assertExchange('execution_control', 'topic', {
+      durable: true,
+    });
 
-  await channel.bindQueue(queue, 'execution_control', 'job.#');
+    const {queue: controlQueue} = await channel.assertQueue('', {
+      exclusive: true,
+    });
 
-  await channel.consume(
-    queue,
-    msg => {
-      if (!msg) {
+    await channel.bindQueue(controlQueue, 'execution_control', 'job.#');
+
+    await channel.consume(controlQueue, message => {
+      if (!message) {
         return;
       }
 
-      const [_, jobId, action] = msg.fields.routingKey.split('.');
+      const [prefix, jobId, action] = message.fields.routingKey.split('.');
 
-      if (!jobId || !action || !isControlAction(action)) {
+      if (prefix !== 'job' || !jobId || !isControlAction(action)) {
         logger.error(
-          {routingKey: msg.fields.routingKey},
-          `Invalid routing key format`,
+          {routingKey: message.fields.routingKey},
+          'Received control message with invalid routing key',
         );
+        channel.ack(message);
 
         return;
       }
 
       const child = activeProcesses.get(jobId);
+
       if (!child) {
+        logger.warn(
+          {jobId, action},
+          'Received control message for job with no active process',
+        );
+        channel.ack(message);
+
         return;
       }
 
-      switch (action) {
-        case 'cancel': {
-          logger.info(`[${jobId}] Received kill signal`);
-          child.kill('SIGKILL');
+      if (action === 'stdin') {
+        const data = message.content.toString();
 
-          break;
+        if (
+          !child.stdin ||
+          child.stdin.destroyed ||
+          child.stdin.writableEnded
+        ) {
+          logger.warn({jobId}, 'Cannot write stdin to a closed process');
+        } else {
+          child.stdin.write(data);
+          logger.info({jobId}, 'Forwarded stdin to job process');
         }
+      } else {
+        const killed = child.kill('SIGKILL');
 
-        case 'stdin': {
-          child.stdin?.write(msg.content.toString());
-
-          break;
-        }
+        logger.info({jobId, killed}, 'Received cancel request for job process');
       }
-    },
-    {noAck: true},
-  );
 
-  await channel.prefetch(1);
-
-  logger.info('Worker initialized, listening for jobs...');
-
-  await channel.consume('execution_queue', msg => {
-    if (!msg) {
-      return;
-    }
-
-    processJob(channel, msg).catch((error: unknown) => {
-      logger.error({error}, 'Error processing job');
-
-      channel.nack(msg, false, false);
+      channel.ack(message);
     });
-  });
+
+    await channel.recover();
+
+    await channel.prefetch(1);
+
+    logger.info('Listening for jobs on "execution_queue"');
+
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    await channel.consume('execution_queue', async message => {
+      if (!message) {
+        logger.error('Received empty message from RabbitMQ');
+
+        return;
+      }
+
+      const jobId: unknown = message.properties.correlationId ?? null;
+
+      if (!isString(jobId)) {
+        logger.error({jobId}, 'Received message with invalid correlationId');
+
+        return;
+      }
+
+      logger.info({jobId}, 'Received job from RabbitMQ');
+
+      try {
+        await processJob(channel, message);
+
+        logger.info({jobId}, 'Job processed successfully');
+      } catch (error) {
+        logger.error({jobId, error}, 'Error processing job');
+
+        channel.ack(message);
+      }
+    });
+  } catch (error) {
+    logger.error({error}, 'Failed to start RabbitMQ worker');
+  }
 };
 
-startWorker().catch(logger.error);
-
-export {activeProcesses};
+void startWorker();

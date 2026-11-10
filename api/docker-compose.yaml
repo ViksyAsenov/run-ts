@@ -1,17 +1,16 @@
 services:
   rabbitmq:
-    image: rabbitmq:latest
+    image: rabbitmq:management
     hostname: rabbitmq
     container_name: rabbitmq
     restart: always
     ports:
-      - 5672:5672
-      - 15672:15672
+      - "5672:5672"
+      - "15672:15672"
     env_file:
       - .env
-    configs:
-      - source: rabbitmq-plugins
-      - target: /etc/rabbitmq/enabled_plugins
+    environment:
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_management
     volumes:
       - rabbitmq-lib:/var/lib/rabbitmq
       - rabbitmq-log:/var/log/rabbitmq

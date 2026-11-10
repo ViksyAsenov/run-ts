@@ -6,7 +6,12 @@ import {Server} from 'socket.io';
 import SocketService from '../services/socket.service';
 
 const setupWS = (server: HttpServer, app: Application): void => {
-  const io = new Server(server);
+  const io = new Server(server, {
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST', 'DELETE'],
+    },
+  });
 
   app.set('io', io);
 
