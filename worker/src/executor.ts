@@ -6,8 +6,10 @@ import {mkdir, unlink, writeFile} from 'fs/promises';
 import path from 'path';
 import {promisify} from 'util';
 
-import activeProcesses from './state';
+import {activeProcesses, resetProcessTimeouts} from './state';
 import isString from './utils/isString';
+
+const inactivityTimeoutMs = 15 * 1000;
 
 const execAsync = promisify(exec);
 
@@ -84,6 +86,23 @@ const processJob = async (
 
     activeProcesses.set(jobId, child);
 
+    let timedOut = false;
+    const terminateAfterTimeout = (): void => {
+      timedOut = true;
+      const killed = child.kill('SIGKILL');
+
+      logger.warn(
+        {jobId, killed, timeoutMs: inactivityTimeoutMs},
+        'Process inactive for too long; terminating process',
+      );
+    };
+    let timeout = setTimeout(terminateAfterTimeout, inactivityTimeoutMs);
+    const resetTimeout = (): void => {
+      clearTimeout(timeout);
+      timeout = setTimeout(terminateAfterTimeout, inactivityTimeoutMs);
+    };
+    resetProcessTimeouts.set(jobId, resetTimeout);
+
     child.stdout.on('data', data => {
       if (Buffer.isBuffer(data)) {
         channel.publish('execution_streams', streamTopic, data);
@@ -96,7 +115,19 @@ const processJob = async (
       }
     });
 
-    await new Promise(resolve => {
+    await new Promise<void>(resolve => {
+      let settled = false;
+      const complete = (): void => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+        resetProcessTimeouts.delete(jobId);
+        resolve();
+      };
+
       child.on('error', error => {
         logger.error({jobId, error}, 'Process error');
         publishJobStatus(channel, jobId, 'failed');
@@ -107,56 +138,48 @@ const processJob = async (
           Buffer.from(`Process error: ${error.message}`),
         );
 
-        resolve(false);
+        complete();
       });
 
       child.on('close', (code, signal) => {
-        if (code !== null || signal !== null) {
-          if (signal) {
-            publishJobStatus(channel, jobId, 'failed');
-            const reason =
-              signal === 'SIGKILL' ? 'Timeout or Force Kill' : signal;
-
-            logger.info({jobId, reason}, 'Process terminated');
-
-            channel.publish(
-              'execution_streams',
-              streamTopic,
-              Buffer.from(`Process terminated: ${reason}`),
-            );
-          } else if (code === 0) {
-            publishJobStatus(channel, jobId, 'finished');
-            logger.info({jobId}, 'Process completed successfully');
-          } else {
-            publishJobStatus(channel, jobId, 'failed');
-            logger.error({jobId, code}, 'Process exited with error code');
-
-            channel.publish(
-              'execution_streams',
-              streamTopic,
-              Buffer.from(
-                `Process crashed with exit code ${String(code ?? 'unknown')}`,
-              ),
-            );
-          }
-
-          resolve(true);
+        if (settled) {
+          return;
         }
 
-        const exitCode = code ?? 'unknown';
-        let exitMessage = `Process exited with code ${String(exitCode)}`;
-
-        if (signal === 'SIGKILL' || signal === 'SIGTERM') {
-          exitMessage = 'Process forcibly terminated';
+        if (timedOut) {
+          publishJobStatus(channel, jobId, 'failed');
+          logger.warn({jobId}, 'Process terminated after execution timeout');
+          channel.publish(
+            'execution_streams',
+            streamTopic,
+            Buffer.from(
+              `Process timed out after ${String(inactivityTimeoutMs)} ms without input and was terminated`,
+            ),
+          );
+        } else if (signal) {
+          publishJobStatus(channel, jobId, 'failed');
+          logger.info({jobId, signal}, 'Process terminated');
+          channel.publish(
+            'execution_streams',
+            streamTopic,
+            Buffer.from(`Process terminated: ${signal}`),
+          );
+        } else if (code === 0) {
+          publishJobStatus(channel, jobId, 'finished');
+          logger.info({jobId}, 'Process completed successfully');
+        } else {
+          publishJobStatus(channel, jobId, 'failed');
+          logger.error({jobId, code}, 'Process exited with error code');
+          channel.publish(
+            'execution_streams',
+            streamTopic,
+            Buffer.from(
+              `Process crashed with exit code ${String(code ?? 'unknown')}`,
+            ),
+          );
         }
 
-        channel.publish(
-          'execution_streams',
-          streamTopic,
-          Buffer.from(exitMessage),
-        );
-
-        resolve(true);
+        complete();
       });
     });
   } catch (systemError: unknown) {
@@ -170,6 +193,7 @@ const processJob = async (
     );
   } finally {
     activeProcesses.delete(jobId);
+    resetProcessTimeouts.delete(jobId);
 
     await unlink(tsFilePath).catch(() => {
       /* empty */

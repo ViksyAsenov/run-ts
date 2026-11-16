@@ -5,7 +5,7 @@ import {isControlAction} from '@shared/types/rabbitmq';
 import amqplib from 'amqplib';
 
 import processJob from './executor';
-import activeProcesses from './state';
+import {activeProcesses, resetProcessTimeouts} from './state';
 import isString from './utils/isString';
 
 const rabbitMqUser = process.env.RABBITMQ_DEFAULT_USER ?? '';
@@ -86,6 +86,7 @@ const startWorker = async (): Promise<void> => {
           logger.warn({jobId}, 'Cannot write stdin to a closed process');
         } else {
           child.stdin.write(data);
+          resetProcessTimeouts.get(jobId)?.();
           logger.info({jobId}, 'Forwarded stdin to job process');
         }
       } else {
